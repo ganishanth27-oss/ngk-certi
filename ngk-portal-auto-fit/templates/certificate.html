@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Certificate · {{ participant.student_name }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <style>
+    /* Custom template overlay styles */
+    .custom-certificate-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      box-shadow: 0 16px 48px rgba(22,34,62,.08);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .custom-certificate-wrap img.template-bg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .custom-certificate-wrap .field-overlay {
+      position: absolute;
+      white-space: nowrap;
+      pointer-events: none;
+      font-family: 'DM Sans', Manrope, sans-serif;
+      line-height: 1.2;
+      max-width: 95%;
+    }
+    .custom-certificate-wrap .field-overlay.align-center { transform: translateX(-50%); }
+    .custom-certificate-wrap .field-overlay.align-right { transform: translateX(-100%); }
+    /* PDF template fallback: show download message */
+    .pdf-template-notice {
+      text-align: center;
+      padding: 60px 20px;
+      background: #f8f9fc;
+      border: 1px solid #e8eaf1;
+      border-radius: 8px;
+    }
+    .pdf-template-notice .pdf-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      color: #4054c5;
+    }
+    .pdf-template-notice h3 {
+      font: 700 18px Manrope, sans-serif;
+      margin: 0 0 8px;
+    }
+    .pdf-template-notice p {
+      color: #667085;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body class="certificate-page">
+  <header class="public-header">
+    <a class="brand" href="/" aria-label="NGK Portal — Nehru Grand Kacheri">
+      <span class="brand-mark">N</span>
+      <span class="brand-copy"><strong>NGK Portal</strong><small>Nehru Grand Kacheri</small></span>
+    </a>
+    <a class="button secondary" href="{{ url_for('certificate_pdf', token=token, download=1) }}">↓ Download PDF</a>
+  </header>
+  <main class="certificate-view">
+
+    {% if has_custom_template and template_image_url %}
+      {# ===== CUSTOM IMAGE TEMPLATE: Show uploaded certificate with dynamic field overlays ===== #}
+      <div class="custom-certificate-wrap" id="custom-cert">
+        <img class="template-bg" src="{{ template_image_url }}" alt="Certificate template">
+
+        {% for field_key, field_cfg in field_positions.items() %}
+          {% if field_cfg.enabled %}
+            {% set field_text = '' %}
+            {% if field_key == 'participant_name' %}
+              {% set field_text = participant.student_name %}
+            {% elif field_key == 'event_name' %}
+              {% set field_text = participant.event_name %}
+            {% elif field_key == 'event_date' and participant.event_date %}
+              {% set field_text = 'held on ' ~ participant.event_date %}
+            {% elif field_key == 'certificate_id' %}
+              {% set field_text = 'Certificate ID: ' ~ participant.certificate_id %}
+            {% endif %}
+            {% if field_text %}
+              <div class="field-overlay align-{{ field_cfg.align }}"
+                   style="left: {{ (field_cfg.x * 100)|round(2) }}%;
+                          bottom: {{ (field_cfg.y * 100)|round(2) }}%;
+                          font-size: {{ field_cfg.size }}px;
+                          color: {{ field_cfg.color }};
+                          font-weight: {% if field_cfg.size > 16 %}700{% else %}400{% endif %};"
+                   data-auto-fit="{{ 'true' if field_cfg.get('auto_fit', true) else 'false' }}"
+                   data-max-width="{{ (field_cfg.get('max_width', 0.78) * 100)|round(2) }}">
+                {{ field_text }}
+              </div>
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      </div>
+
+    {% elif has_custom_template %}
+      {# ===== CUSTOM PDF TEMPLATE: Cannot show inline preview, prompt download ===== #}
+      <div class="pdf-template-notice">
+        <div class="pdf-icon">📄</div>
+        <h3>Your certificate is ready</h3>
+        <p>This certificate uses a custom PDF template. Download the PDF to view it with full fidelity.</p>
+      </div>
+
+    {% else %}
+      {# ===== DEFAULT CERTIFICATE DESIGN (no custom template uploaded) ===== #}
+      <div class="certificate-paper">
+        <div class="paper-border">
+          <div class="paper-seal">N</div>
+          <div class="paper-org">{{ config.organization|upper }}</div>
+          <h1>{{ config.title }}</h1>
+          <p>{{ config.intro }}</p>
+          <div class="paper-name">{{ participant.student_name }}</div>
+          <p>{{ config.participation_text }}</p>
+          <h2>{{ participant.event_name }}</h2>
+          <p>held on {{ participant.event_date or 'the event date' }}</p>
+          <div class="paper-sign">{{ config.organizer }}</div>
+          <div class="paper-certificate-id">Certificate ID: {{ participant.certificate_id }}</div>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="certificate-actions">
+      <a class="button primary" href="{{ url_for('certificate_pdf', token=token, download=1) }}">Download certificate</a>
+      <a class="button secondary" href="/">Find another certificate</a>
+    </div>
+  </main>
+  {% if has_custom_template and template_image_url %}
+  <script>
+    (() => {
+      const wrap = document.getElementById('custom-cert');
+      if (!wrap) return;
+
+      function fitFields() {
+        const width = wrap.clientWidth;
+        wrap.querySelectorAll('.field-overlay[data-auto-fit="true"]').forEach((field) => {
+          const maxWidth = width * Math.max(0.2, Math.min(0.95, Number(field.dataset.maxWidth || 78) / 100));
+          const original = Number.parseFloat(field.dataset.originalSize || getComputedStyle(field).fontSize);
+          field.dataset.originalSize = original;
+          let size = original;
+          field.style.fontSize = `${size}px`;
+          while (size > 8 && field.scrollWidth > maxWidth) {
+            size -= 1;
+            field.style.fontSize = `${size}px`;
+          }
+          field.style.maxWidth = `${maxWidth}px`;
+          field.style.overflow = 'hidden';
+          field.style.textOverflow = 'clip';
+        });
+      }
+
+      window.addEventListener('load', fitFields);
+      window.addEventListener('resize', fitFields);
+      if (wrap.querySelector('img')) wrap.querySelector('img').addEventListener('load', fitFields);
+      fitFields();
+    })();
+  </script>
+  {% endif %}
+</body>
+</html>
